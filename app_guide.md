@@ -1,6 +1,10 @@
 # Quick Reference
 
 shiny app for Endicott laboratory instrument scheduling for students and faculty. 
+
+[Shiny Gallery for Quick Reference](https://shiny.posit.co/r/gallery/)
+
+### Layout description
 App will have an instrument selection panel with buttons for each instrument.
 It will also have a day & time filler with a reactive visual calendar showing when instruments are schedules and by who. 
 color coding will also be used for different instruments.
@@ -11,10 +15,6 @@ JSC324 shaker 1
 JSC324 shaker 2
 Miseq
 Nextseq
-
-[Shiny Gallery for Quick Reference](https://shiny.posit.co/r/gallery/)
-
-### Layout description
 
 ![My Layout](Shiny layout.png)
 
