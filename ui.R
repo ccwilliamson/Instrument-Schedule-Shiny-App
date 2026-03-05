@@ -1,6 +1,7 @@
 
 ## R shinyapp to generate editable instrument scheduling
-## Cecelia WIlliamson 2/2026
+## Cecelia Williamson 2/2026
+
 library(ggplot2)
 library(shiny)
 library(colourpicker)
@@ -23,7 +24,7 @@ instruments <- list(
   list(name="Nextseq", color="#fccde5")
 )
 
-## UI 
+## UI -----------------------------------------------------------------------
 
 ui <- fluidPage(
   
@@ -42,13 +43,15 @@ ui <- fluidPage(
       }
     "))
   ),
-## set up the app panels      
+
+## set up the app panels   
+
   pageWithSidebar(
     headerPanel(title="Endicott Laboratory Equipment Booking", windowTitle="Endicott Laboratory Equipment Booking"),
     sidebarPanel(
       helpText("Reserve instruments for the intended time period they will be in use."),
       
-## time range delection for calendar
+## time range detection for calendar
 
       h3("Show Calendar"),
       div(class="row",
@@ -67,6 +70,7 @@ ui <- fluidPage(
       
 
 ## Instrument buttons
+
       div(
         lapply(seq_along(instruments), function(i) {
           inst <- instruments[[i]]
@@ -99,7 +103,7 @@ ui <- fluidPage(
   )
 )
 
-## SERVER 
+## SERVER ------------------------------------------------------------------------
 
 server <- function(input, output, session) {
   
@@ -192,24 +196,26 @@ server <- function(input, output, session) {
     })
   })
   
-##fn_plot
+##fn_plot------------------------------
+##reactive calender builder, updates a inputs change
+
   fn_plot <- reactive({
     
-    shiny::req(input$in_duration_date_start)
-    shiny::req(input$in_duration_date_end)
+    shiny::req(input$in_duration_date_start) #validates the start date is input
+    shiny::req(input$in_duration_date_end) #validates the end date is input
     
 ##only allow for selection of valid future times
     if(as.Date(input$in_duration_date_start) > as.Date(input$in_duration_date_end))
       stop("End duration date must be later than start duration date.")
     
-## Prepare dates
+## takes input dates and builds a dataframe for the time period with rows and columns that make build the calendar visual
     dfr <- data.frame(date=seq(as.Date(input$in_duration_date_start), as.Date(input$in_duration_date_end), by=1))
     dfr$day   <- factor(strftime(dfr$date, format="%a"), levels=rev(c("Mon","Tue","Wed","Thu","Fri","Sat","Sun")))
     dfr$week  <- factor(strftime(dfr$date, format="%V"))
     dfr$month <- strftime(dfr$date, format="%B")
     dfr$month <- factor(dfr$month, levels=unique(dfr$month))
     dfr$ddate <- factor(strftime(dfr$date, format="%d"))
-    dfr$comment <- "Available"
+    dfr$comment <- "Available"  ##labels each day as available until the instrument booking is selected
     
 ## Get active instruments
     active <- which(sapply(seq_along(instruments), function(i) toggled[[paste0("inst_", i)]]))
@@ -217,7 +223,7 @@ server <- function(input, output, session) {
     active_names <- c()
     active_cols  <- c()
 
-## for loop to input selectred date and start and end time
+## for loop to input selected date and start and end time
     for (i in active) {
       req(input[[paste0("inst_date_", i)]])
       req(input[[paste0("inst_start_time_", i)]])
@@ -237,16 +243,19 @@ server <- function(input, output, session) {
       active_cols  <- c(active_cols,  instruments[[i]]$color)
     }
     
-    dfr$comment[dfr$day == "Sat" | dfr$day == "Sun"] <- "Weekend"
-    
+    dfr$comment[dfr$day == "Sat" | dfr$day == "Sun"] <- "Weekend" ##labels the weekend days so they are a different color than available
+
+## create vector to properly color the calender based on what is selected and have a correct legend order. 
+## unique gets all unique values when they appear, such as available, or instrument name, to check where they are before updating the booking
     fc <- c()
     if ("Available" %in% unique(dfr$comment)) fc <- c(fc, "Available")
-    fc <- c(fc, active_names)
+    fc <- c(fc, active_names)  ## allows for instrument color coding when the instrument is selected
     if ("Weekend" %in% unique(dfr$comment))   fc <- c(fc, "Weekend")
-    dfr$comment <- factor(dfr$comment, levels=fc)
-    
+    dfr$comment <- factor(dfr$comment, levels=fc) ## converts the text into factors, allowing for ordering and levels. This allows for the color to match the correct label
+
+#build vector for the colors for available, active instrument colors, and weekend colors. goes in same order as FC, needs to match to have correct color coding   
     all_cols <- c(input$in_track_colour_available, active_cols, input$in_track_colour_weekend)
-    
+## build calendar using ggplot  
     p <- ggplot(dfr, aes(x=week, y=day)) +
       geom_tile(aes(fill=comment)) +
       geom_text(aes(label=ddate), size=2.5) +
@@ -267,26 +276,35 @@ server <- function(input, output, session) {
             legend.text     = element_text(size=5),
             legend.key.size = unit(0.3,"cm"),
             legend.spacing.x= unit(0.2,"cm"))
-    
+  
+##store$week, counts the number of weeks based on the timeframe selected.
+## number of weeks is saved into the store$week vector, allows for passing from reactiveValues to out_plot
     store$week <- length(levels(dfr$week))
     return(p)
   })
   
-  ## OUT: out_plot ------------------------------------------------------------
-  output$out_plot <- renderImage({
-    shiny::req(fn_plot())
-    
+## OUT: out_plot ---------------------------------------------------------------------------------------
+
+  
+##render the calender image to be displayed in the UI, re-runs when rn_plot changes to update the image based on the inputs selected
+   output$out_plot <- renderImage({
+    shiny::req(fn_plot())  ## check that the plot has been produced before being displayed, prevents crashing
+ 
+##set the dimensions of the plot to be standard   
     height <- 5.5
     width  <- 20
-    res    <- 150
-    
+    res    <- 150 ##resolution
+
+## stored the ggplot fn_plot as "p", ggsave saves plot (p) to a file which is then called into the UI
+##overwrites existing plot with every update so there are not new files every time
     p <- fn_plot()
-    ggsave("calendar_plot.png", p, height=height, width=width, units="cm", dpi=res, type="cairo")
+    ggsave("calendar_plot.png", p, height=height, width=width, units="cm", dpi=res)
     
-    return(list(src         = "calendar_plot.png",
-                contentType = "image/png",
-                width       = "100%",   # fills the main panel
-                height      = "auto",   # height adjusts proportionally
+## returns list of settings to renderImage for shiny to display
+    return(list(src         = "calendar_plot.png", ##location of image
+                contentType = "image/png", ##file type
+                width       = "100%",   ## fills the main panel
+                height      = "auto",   ## height adjusts proportionally
                 alt         = "calendar_plot"))
   })
 }
