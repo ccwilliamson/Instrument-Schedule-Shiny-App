@@ -4,6 +4,7 @@
 library(ggplot2)
 library(shiny)
 library(colourpicker)
+library(shinyjs)
 
 ## load colours
 cols <- toupper(c(
@@ -22,13 +23,26 @@ instruments <- list(
   list(name="Nextseq", color="#fccde5")
 )
 
-
 ## UI 
 
 ui <- fluidPage(
-
-## set up the app panels
   
+  useShinyjs(),
+
+#make plot sizing correct for page
+  tags$head(
+    tags$style(HTML("
+      #out_plot img {
+        width: 100% !important;
+        height: auto !important;
+      }
+      #out_plot {
+        width: 100%;
+        min-height: 300px;
+      }
+    "))
+  ),
+## set up the app panels      
   pageWithSidebar(
     headerPanel(title="Endicott Laboratory Equipment Booking", windowTitle="Endicott Laboratory Equipment Booking"),
     sidebarPanel(
@@ -143,17 +157,35 @@ server <- function(input, output, session) {
     
     lapply(active, function(i) {
       inst <- instruments[[i]]
+      avail_times <- c("8:00 AM","8:30 AM","9:00 AM","9:30 AM",
+                       "10:00 AM","10:30 AM","11:00 AM","11:30 AM",
+                       "12:00 PM","12:30 PM","1:00 PM","1:30 PM",
+                       "2:00 PM","2:30 PM","3:00 PM","3:30 PM",
+                   "4:00 PM","4:30 PM","5:00 PM")
+      
+#create container boxes with div
       div(
         style = paste0("border-left: 4px solid ", inst$color, "; padding-left: 8px; margin-bottom: 10px;"),
         strong(inst$name),
+        
+        tags$br(), #line break
+        
+        dateInput(paste0("inst_date_", i),
+                  label = "Booking Date",
+                  value = Sys.Date()),
+        
+#add a start time booking option and a class booking option using div 
+
         div(class="row",
             div(class="col-xs-6", style="padding-right: 5px;",
-                dateInput(paste0("inst_start_", i), label="From",
-                          value=format(as.Date(Sys.time(), "%Y-%m-%d", tz="Europe/Stockholm"), "%Y-%m-%d"))
+                selectInput(paste0("inst_start_time_", i), label="Start Time",
+                            choices = avail_times,
+                            selected = "9:00 AM")
             ),
             div(class="col-xs-6", style="padding-left: 5px;",
-                dateInput(paste0("inst_end_", i), label="To",
-                          value=format(as.Date(Sys.time(), "%Y-%m-%d", tz="Europe/Stockholm")+7, "%Y-%m-%d"))
+              selectInput(paste0("inst_end_time_", i), label="End Time",
+                          choices = avail_times,
+                          selected = "5:00 PM")
             )
         )
       )
@@ -166,7 +198,7 @@ server <- function(input, output, session) {
     shiny::req(input$in_duration_date_start)
     shiny::req(input$in_duration_date_end)
     
-##only allow for seeltion of valid future times
+##only allow for selection of valid future times
     if(as.Date(input$in_duration_date_start) > as.Date(input$in_duration_date_end))
       stop("End duration date must be later than start duration date.")
     
@@ -184,25 +216,25 @@ server <- function(input, output, session) {
     
     active_names <- c()
     active_cols  <- c()
-    
+
+## for loop to input selectred date and start and end time
     for (i in active) {
-      inst <- instruments[[i]]
-      start_id <- paste0("inst_start_", i)
-      end_id   <- paste0("inst_end_", i)
+      req(input[[paste0("inst_date_", i)]])
+      req(input[[paste0("inst_start_time_", i)]])
+      req(input[[paste0("inst_end_time_", i)]])
+
+
+      t_date       <- as.Date(input[[paste0("inst_date_", i)]])
+      t_start_time <- input[[paste0("inst_start_time_", i)]]
+      t_end_time   <- input[[paste0("inst_end_time_",   i)]]
       
-      shiny::req(input[[start_id]])
-      shiny::req(input[[end_id]])
+      # Combine instrument name and time range as the calendar label
+      label <- paste0(instruments[[i]]$name, "\n", t_start_time, " - ", t_end_time)
       
-      t_start <- as.Date(as.character(input[[start_id]]))
-      t_end   <- as.Date(as.character(input[[end_id]]))
-      
-      if (!is.null(t_start) && !is.null(t_end)) {
-        if (t_start > t_end) stop(paste(inst$name, "end date must be later than start date."))
-      }
-      
-      dfr$comment[dfr$date >= t_start & dfr$date <= t_end] <- inst$name
-      active_names <- c(active_names, inst$name)
-      active_cols  <- c(active_cols,  inst$color)
+      # Mark that specific date on the calendar with the label
+      dfr$comment[dfr$date == t_date] <- label
+      active_names <- c(active_names, label)
+      active_cols  <- c(active_cols,  instruments[[i]]$color)
     }
     
     dfr$comment[dfr$day == "Sat" | dfr$day == "Sun"] <- "Weekend"
@@ -245,17 +277,17 @@ server <- function(input, output, session) {
     shiny::req(fn_plot())
     
     height <- 5.5
-    width  <- (store$week * 1) + 1
-    res    <- 200
+    width  <- 20
+    res    <- 150
     
     p <- fn_plot()
     ggsave("calendar_plot.png", p, height=height, width=width, units="cm", dpi=res, type="cairo")
     
-    return(list(src="calendar_plot.png",
-                contentType="image/png",
-                width  = round(((width*res)/2.54)*1, 0),
-                height = round(((height*res)/2.54)*1, 0),
-                alt    = "calendar_plot"))
+    return(list(src         = "calendar_plot.png",
+                contentType = "image/png",
+                width       = "100%",   # fills the main panel
+                height      = "auto",   # height adjusts proportionally
+                alt         = "calendar_plot"))
   })
 }
 
